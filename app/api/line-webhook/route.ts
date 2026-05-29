@@ -6,7 +6,26 @@ import { askGemini } from "@/lib/gemini";
 
 const DEFAULT_REPLY =
   "ขออภัยนะคะ ไม้หอมไม่ทราบข้อมูลตรงนี้ค่ะ รบกวนติดต่อทางร้านโดยตรงได้เลยนะคะ";
+async function notifyOwner(userMessage: string) {
+  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN ?? "";
+  const ownerId = process.env.LINE_OWNER_USER_ID ?? "";
+  if (!ownerId) return;
 
+  await fetch("https://api.line.me/v2/bot/message/push", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      to: ownerId,
+      messages: [{
+        type: "text",
+        text: `🔔 ลูกค้าถามแต่ไม้หอมตอบไม่ได้\n"${userMessage}"`,
+      }],
+    }),
+  });
+}
 function verifySignature(body: string, signature: string): boolean {
   const secret = process.env.LINE_CHANNEL_SECRET ?? "";
   console.log(`[debug] secret_length=${secret.length} secret_last4=${secret.slice(-4)}`);
@@ -60,6 +79,7 @@ export async function POST(req: NextRequest) {
       } catch (err) {
         console.error("[webhook] askGemini threw:", err);
         replyText = DEFAULT_REPLY;
+        await notifyOwner(userMessage);
       }
 
       try {
