@@ -77,6 +77,9 @@ export async function POST(req: NextRequest) {
       let replyText: string;
       try {
         replyText = await askGemini(userMessage, faqText);
+        if (replyText === DEFAULT_REPLY) {
+    await notifyOwner(userMessage);
+}
       } catch (err) {
         console.error("[webhook] askGemini threw:", err);
         replyText = DEFAULT_REPLY;
