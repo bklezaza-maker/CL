@@ -9,6 +9,7 @@ const DEFAULT_REPLY =
 async function notifyOwner(userMessage: string) {
   const token = process.env.LINE_CHANNEL_ACCESS_TOKEN ?? "";
   const ownerId = process.env.LINE_OWNER_USER_ID ?? "";
+  console.log(`[notify] ownerId=${ownerId} message=${userMessage}`);
   if (!ownerId) return;
 
   await fetch("https://api.line.me/v2/bot/message/push", {
