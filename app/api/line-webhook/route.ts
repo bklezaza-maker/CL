@@ -9,6 +9,7 @@ const DEFAULT_REPLY =
 
 function verifySignature(body: string, signature: string): boolean {
   const secret = process.env.LINE_CHANNEL_SECRET ?? "";
+  console.log(`[debug] secret_length=${secret.length} secret_last4=${secret.slice(-4)}`);
   const hash = crypto
     .createHmac("sha256", secret)
     .update(body)
