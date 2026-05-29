@@ -1,0 +1,96 @@
+import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
+import { messagingApi } from "@line/bot-sdk";
+import { fetchFaq, faqToText } from "@/lib/sheet";
+import { askGemini } from "@/lib/gemini";
+
+const DEFAULT_REPLY =
+  "ขออภัยนะคะ ไม้หอมไม่ทราบข้อมูลตรงนี้ค่ะ รบกวนติดต่อทางร้านโดยตรงได้เลยนะคะ";
+
+function verifySignature(body: string, signature: string): boolean {
+  const secret = process.env.LINE_CHANNEL_SECRET ?? "";
+  const hash = crypto
+    .createHmac("sha256", secret)
+    .update(body)
+    .digest("base64");
+  return hash === signature;
+}
+
+export async function POST(req: NextRequest) {
+  const rawBody = await req.text();
+  const signature = req.headers.get("x-line-signature") ?? "";
+
+  if (!verifySignature(rawBody, signature)) {
+    console.warn(
+      `[webhook] invalid signature — ip=${req.headers.get("x-forwarded-for") ?? "unknown"}`
+    );
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  let body: { events?: unknown[] };
+  try {
+    body = JSON.parse(rawBody);
+  } catch {
+    return NextResponse.json({ error: "Bad Request" }, { status: 400 });
+  }
+
+  const events = body.events ?? [];
+  const textEvents = events.filter(isLineTextMessageEvent);
+
+  if (textEvents.length === 0) {
+    return NextResponse.json({ ok: true });
+  }
+
+  const client = new messagingApi.MessagingApiClient({
+    channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN ?? "",
+  });
+
+  const faqEntries = await fetchFaq();
+  const faqText = faqToText(faqEntries);
+
+  await Promise.all(
+    textEvents.map(async (event) => {
+      const userMessage = event.message.text;
+      const replyToken = event.replyToken;
+
+      let replyText: string;
+      try {
+        replyText = await askGemini(userMessage, faqText);
+      } catch (err) {
+        console.error("[webhook] askGemini threw:", err);
+        replyText = DEFAULT_REPLY;
+      }
+
+      try {
+        await client.replyMessage({
+          replyToken,
+          messages: [{ type: "text", text: replyText }],
+        });
+      } catch (err) {
+        // log but don't throw — prevents Vercel retry loop
+        console.error(
+          `[webhook] replyMessage failed replyToken=${replyToken}:`,
+          err
+        );
+      }
+    })
+  );
+
+  return NextResponse.json({ ok: true });
+}
+
+// ── type helpers ──────────────────────────────────────────────────────────────
+
+interface LineTextMessageEvent {
+  type: "message";
+  replyToken: string;
+  message: { type: "text"; text: string };
+}
+
+function isLineTextMessageEvent(e: unknown): e is LineTextMessageEvent {
+  if (typeof e !== "object" || e === null) return false;
+  const ev = e as Record<string, unknown>;
+  if (ev.type !== "message") return false;
+  const msg = ev.message as Record<string, unknown> | undefined;
+  return msg?.type === "text" && typeof msg?.text === "string";
+}
