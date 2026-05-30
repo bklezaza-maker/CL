@@ -4,6 +4,8 @@ import { messagingApi } from "@line/bot-sdk";
 import { fetchFaq, faqToText } from "@/lib/sheet";
 import { askGemini } from "@/lib/gemini";
 
+// Human takeover mode — เก็บ userId ที่อยู่ใน human mode
+const humanModeUsers = new Set<string>();
 const DEFAULT_REPLY =
   "ขออภัยนะคะ ไม้หอมไม่ทราบข้อมูลตรงนี้ค่ะ รบกวนติดต่อทางร้านโดยตรงได้เลยนะคะ";
 async function notifyOwner(userMessage: string) {
@@ -74,6 +76,19 @@ export async function POST(req: NextRequest) {
       const userMessage = event.message.text;
       const replyToken = event.replyToken;
 
+      // ── Human takeover commands ──
+    const userId = (event as any).source?.userId ?? "";
+    if (userMessage === "/human") {
+      humanModeUsers.add(userId);
+      await client.replyMessage({ replyToken, messages: [{ type: "text", text: "✅ สลับเป็นโหมดคนตอบแล้วค่ะ พิมพ์ /bot เพื่อให้ไม้หอมกลับมาตอบนะคะ" }] });
+      return;
+    }
+    if (userMessage === "/bot") {
+      humanModeUsers.delete(userId);
+      await client.replyMessage({ replyToken, messages: [{ type: "text", text: "✅ ไม้หอมกลับมาตอบแทนแล้วนะคะ 😊" }] });
+      return;
+    }
+    if (humanModeUsers.has(userId)) return;
       let replyText: string;
       try {
         replyText = await askGemini(userMessage, faqText);
