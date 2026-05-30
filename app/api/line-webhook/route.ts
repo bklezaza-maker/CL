@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
       const replyToken = event.replyToken;
 
       // ── Human takeover commands ──
-    const userId = (event as any).source?.userId ?? "";
+    const userId = (event as Record<string, unknown>).source?.userId as string ?? "";
     if (userMessage === "/human") {
       humanModeUsers.add(userId);
       await client.replyMessage({ replyToken, messages: [{ type: "text", text: "✅ สลับเป็นโหมดคนตอบแล้วค่ะ พิมพ์ /bot เพื่อให้ไม้หอมกลับมาตอบนะคะ" }] });
